@@ -1,5 +1,4 @@
 name: Auth CI
-
 on:
   pull_request:
     branches: [main]
@@ -14,21 +13,53 @@ jobs:
   contract:
     name: Auth contract and build
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: local-test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: host=127.0.0.1 port=5432 dbname=postgres user=postgres password=local-test-only sslmode=disable
+      RUNTIME_IMAGE: public.ecr.aws/lambda/python@sha256:cf3e082b6c28721944dfef2c252c2e6df2f65aab3c2e2a64ce1f86f80c7aa13d
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ppdssdev/tech-challenge-oficina
+          ref: 4311ab9ef2a0ec3cf33cdc1fb28d68ca66b403bb
+          path: producer
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.13'
       - run: python -m pip install -r requirements-dev.txt
-      - run: ruff check scripts tests
-      - run: python -m unittest discover -s tests -v
-      - run: python scripts/build.py "$GITHUB_SHA"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - run: ruff check auth scripts tests
+      - run: python scripts/prepare_integration.py producer
+      - run: python -m pytest -q --junitxml=dist/tests.xml
+      - name: Build twice and prove reproducibility
+        run: |
+          python scripts/build.py "$GITHUB_SHA"
+          cp dist/*.zip.sha256 /tmp/first.sha256
+          python scripts/build.py "$GITHUB_SHA"
+          diff /tmp/first.sha256 dist/*.zip.sha256
+      - name: Execute extracted ZIP in official Linux runtime without network
+        run: |
+          mkdir /tmp/bundle
+          unzip -q 'dist/*.zip' -d /tmp/bundle
+          docker run --rm --network none --entrypoint python \
+            -v /tmp/bundle:/var/task:ro \
+            -v "$PWD/scripts/smoke_bundle.py:/tmp/smoke.py:ro" \
+            -e PYTHONPATH=/var/task "$RUNTIME_IMAGE" /tmp/smoke.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: auth-contracts-${{ github.sha }}
+          name: auth-lambda-python313-x86_64-${{ github.sha }}
           path: dist/*
           if-no-files-found: error
           retention-days: 7
