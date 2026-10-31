@@ -46,3 +46,29 @@ A integração exige migração explícita do validador HMAC atual da API.
 Alterações após inicialização somente por PR; staging/production ainda sem deploy.
 Próxima PR: implementar handler com portas para consulta/assinatura, mocks de erros,
 testes reais de assinatura/rotação e testes PostgreSQL; depois integração API Gateway.
+
+## Revisão corretiva do bootstrap
+
+Aprovação deste bootstrap não representa conclusão da Fase 3. O workflow atual
+executa **CI**, inclusive em push main; não implementa CD automático. Environments
+existentes não são prova de deployment. Nenhum recurso AWS foi implementado aqui.
+
+O checkout padrão de `pull_request` testa o merge sintético (GITHUB_SHA), enquanto
+`github.event.pull_request.head.sha` identifica o HEAD da PR. Registrar ambos, base,
+repo e run ID/attempt ao relacionar checks e artifacts. Nunca chamar o SHA de merge
+de CI de HEAD da PR nem de release implantada.
+
+`auth-contracts-<sha>.zip` e o artifact de mesmo prefixo usam GITHUB_SHA: em PR é o
+merge sintético. O comando local de build usa o commit passado explicitamente, que
+pode ser HEAD; esses dois contextos não são intercambiáveis. O checksum verifica
+conteúdo, não comprova origem nem deploy. Não promover bundle de PR como release.
+
+Gate app/auth ainda aberto: a aplicação emite/valida HMAC com sub=username e roles
+(lista), enquanto o contrato futuro propõe RS256/JWKS, sub=UUID, role=CUSTOMER e
+TTL 900 s. Não habilitar integração antes de migração e testes positivos/negativos
+conjuntos de claims, assinatura, rotação, consulta e RBAC, preservando ADMIN.
+Schemas atuais não validam JWT nem dígitos verificadores de CPF. A view e grants
+SQL precisam implementação futura na aplicação; não são recursos disponíveis.
+
+[Matriz, contratos e diagnóstico de governança](https://github.com/ppdssdev/tech-challenge-oficina/blob/feature/fase3-multirepo-bootstrap/docs/fase3/corrective-review.md).
+[Rastreabilidade e gates de CD](https://github.com/ppdssdev/tech-challenge-oficina/blob/feature/fase3-multirepo-bootstrap/docs/fase3/cicd-strategy.md).
