@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "access_token",
+    "token_type",
+    "expires_in"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "access_token": {
+      "type": "string",
+      "minLength": 1
+    },
+    "token_type": {
+      "const": "Bearer"
+    },
+    "expires_in": {
+      "const": 900
+    }
+  }
+}
