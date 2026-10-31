@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "cpf"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "cpf": {
+      "type": "string",
+      "pattern": "^[0-9]{11}$"
+    }
+  }
+}
