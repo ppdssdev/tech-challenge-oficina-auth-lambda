@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   validation:
-    name: Complete V2 validation (no AWS operations)
+    name: Auth contract and build
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
