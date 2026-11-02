@@ -1,3 +1,10 @@
+> Registro histórico do Prompt 04. Estado atual, testes e pendências: [Prompt 12](prompt12-integration.md).
+
+> Evidência histórica, anterior à reconciliação V11. Referências a V8/V1, hashes,
+> contagens e resultados abaixo não autorizam staging. O contrato operacional atual
+> exige V1–V11, leitura exclusiva de V2 e pin Java integrado no PR #7; consulte
+> [o fechamento V2](fase3/lambda-v2-final.md) e [staging](infra-staging.md).
+
 # Entrega consolidada — Prompt 04
 
 - [PR A — Lambda #2](https://github.com/ppdssdev/tech-challenge-oficina-auth-lambda/pull/2)

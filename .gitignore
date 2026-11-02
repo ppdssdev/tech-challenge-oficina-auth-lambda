@@ -2,3 +2,12 @@ __pycache__/
 .venv/
 dist/
 .env*
+.terraform/
+*.tfstate*
+*.tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+.pytest_cache/
+.ruff_cache/
+infra/terraform/tests/fixture.zip
