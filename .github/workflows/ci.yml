@@ -10,56 +10,43 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  contract:
+  validation:
     name: Auth contract and build
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_PASSWORD: local-test-only
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready --health-interval 5s
-          --health-timeout 5s --health-retries 10
+    timeout-minutes: 25
     env:
-      TEST_DATABASE_URL: host=127.0.0.1 port=5432 dbname=postgres user=postgres password=local-test-only sslmode=disable
-      RUNTIME_IMAGE: public.ecr.aws/lambda/python@sha256:cf3e082b6c28721944dfef2c252c2e6df2f65aab3c2e2a64ce1f86f80c7aa13d
+      JAVA_CONTRACT_SHA: 57eb5df2c3e32fe5663596cbecfcd43a5d3ed780
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - name: Require the reviewed Java pin
+        run: test "$(cat JAVA_CONTRACT_SHA)" = "$JAVA_CONTRACT_SHA"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ppdssdev/tech-challenge-oficina
-          ref: 4311ab9ef2a0ec3cf33cdc1fb28d68ca66b403bb
+          ref: ${{ env.JAVA_CONTRACT_SHA }}
           path: producer
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.13'
-      - run: python -m pip install -r requirements-dev.txt
-      - run: ruff check auth scripts tests
-      - run: python scripts/prepare_integration.py producer
-      - run: python -m pytest -q --junitxml=dist/tests.xml
-      - name: Build twice and prove reproducibility
-        run: |
-          python scripts/build.py "$GITHUB_SHA"
-          cp dist/*.zip.sha256 /tmp/first.sha256
-          python scripts/build.py "$GITHUB_SHA"
-          diff /tmp/first.sha256 dist/*.zip.sha256
-      - name: Execute extracted ZIP in official Linux runtime without network
-        run: |
-          mkdir /tmp/bundle
-          unzip -q 'dist/*.zip' -d /tmp/bundle
-          docker run --rm --network none --entrypoint python \
-            -v /tmp/bundle:/var/task:ro \
-            -v "$PWD/scripts/smoke_bundle.py:/tmp/smoke.py:ro" \
-            -e PYTHONPATH=/var/task "$RUNTIME_IMAGE" /tmp/smoke.py
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+        with:
+          terraform_version: '1.14.6'
+          terraform_wrapper: false
+      - name: Run the same single-command validation as external operators
+        run: bash scripts/validate_external.sh "$GITHUB_WORKSPACE/producer"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: success()
         with:
           name: auth-lambda-python313-x86_64-${{ github.sha }}
-          path: dist/*
+          path: |
+            /tmp/lambda-v2-validation.*/lambda/dist/*
+            /tmp/lambda-v2-validation.*/summary.txt
+            /tmp/lambda-v2-validation.*/source-manifest.json
+            /tmp/lambda-v2-validation.*/postgres-image-id.txt
+            /tmp/lambda-v2-validation.*/terraform-tests.jsonl
           if-no-files-found: error
           retention-days: 7

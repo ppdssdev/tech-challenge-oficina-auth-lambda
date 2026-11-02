@@ -15,7 +15,7 @@ class PostgresIdentityLookup:
         ) as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    'SELECT customer_id, active FROM auth.customer_identity_v1 '
+                    'SELECT customer_id, active FROM auth.customer_identity_v2 '
                     'WHERE cpf = %s LIMIT 2', (cpf,),
                 )
                 return [Identity(*row) for row in cursor.fetchall()]
