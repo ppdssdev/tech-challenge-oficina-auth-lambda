@@ -1,0 +1,14 @@
+{
+  "tests": 200,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "python": "3.13.18",
+  "postgresql": "16.15",
+  "tls_verified": true,
+  "tested_commit": "09f3b0d0b51ef17545cbbc6be32223497b434863",
+  "java_contract_sha": "57eb5df2c3e32fe5663596cbecfcd43a5d3ed780",
+  "postgres_image_id": "sha256:6a2e324ebe59af6031c4c1cd96c1d5072c2ebc36563d2196365e43b8297c062d",
+  "cleanup_confirmed": true,
+  "scope": "disposable local PostgreSQL, no AWS/RDS; smoke transport mocked"
+}

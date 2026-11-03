@@ -1,8 +1,10 @@
 # Demonstração CPF — Fase 3
 
-**Estado desta entrega: preparação e testes locais/CI. Nenhuma chamada à AWS,
-RDS staging ou API Java staging foi executada.** Os comandos operacionais abaixo
-são para uma janela futura, explicitamente autorizada. Não executar na CI.
+**Entrega original de #6: preparação e testes locais/CI, sem chamadas AWS/RDS/Java
+staging.** A revisão corretiva #8 acrescentou leituras sanitizadas AWS e kubectl
+get via SSM, sem Invoke, SQL no RDS ou execução do smoke. O [adendo](private-transport-review.md)
+registra o bloqueio atual da allowlist. Os comandos operacionais abaixo são para
+uma janela futura, explicitamente autorizada. Não executar na CI.
 
 ## O que será demonstrado
 

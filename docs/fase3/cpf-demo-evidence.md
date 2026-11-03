@@ -1,8 +1,11 @@
 # Evidências da preparação e matriz esperada
 
 **Não é relatório de execução staging.** Conta/região/recursos foram informados
-pelo operador; nenhum estado real foi consultado nesta entrega. Fontes e SHAs
-estão no [runbook](cpf-demo-runbook.md). Repositórios irmãos somente lidos.
+pelo operador na entrega original de #6, que não consultou estado real. Fontes e
+SHAs estão no [runbook](cpf-demo-runbook.md). A correção #8 acrescentou leituras
+AWS/kubectl sanitizadas, registradas no [snapshot datado](https://github.com/ppdssdev/tech-challenge-oficina/blob/docs/fase3-final-audit/docs/fase3/security-review-evidence.md),
+e a contagem de allowlist no [adendo](private-transport-review.md). A matriz abaixo
+continua pendente da execução completa dos gates; leituras isoladas não a aprovam.
 
 ## Complemento de revisão
 

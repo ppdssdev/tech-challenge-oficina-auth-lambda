@@ -153,14 +153,57 @@ prazo não retroativamente aprova a demonstração; registrar falha e horários.
 
 ## Verificação local
 
-Nesta correção: **92 testes do smoke passaram**; suíte Python completa local
+Primeira execução desta correção: **92 testes do smoke passaram**; suíte Python local
 **178 passaram / 22 PostgreSQL ignorados**, com `TEST_DATABASE_URL` removida
 explicitamente para impedir acesso a banco. Ruff (`auth scripts tests`) e
-`git diff --check` passaram. Os 22 testes exigem PostgreSQL descartável e devem
-ser comprovados pela CI; não foram executados no RDS.
+`git diff --check` passaram. Os 22 testes exigem PostgreSQL descartável; a execução complementar abaixo
+os comprovou localmente. Nenhum foi executado no RDS.
 
 Os testes proíbem sockets/DNS; AWS, HTTP e SQL são simulados. Exercitam origens e
 rotas proibidas, opt-in, ausência de redirects/proxies, CA/hostname HTTPS, TLS RDS
 preservando DNS, prazo de cleanup sem falso PASS e a matriz criptográfica anterior.
 Não comprovam transporte SSM, certificado operacional, fixtures ou comportamento
 Java implantado. Nenhuma exceção foi adicionada à verificação RS256 ou ao 403 ADMIN.
+
+## Bloqueio de allowlist observado em staging
+
+Consulta AWS somente leitura em `2026-11-03T17:11:21Z` contou **um** ID distinto
+em `AUTH_SYNTHETIC_CUSTOMER_IDS` da Lambda `oficina-staging-auth`. Nenhum ID foi
+publicado. O smoke exige três clientes distintos (`owner`, `other`, `inactive`)
+e verifica presença de todos em `preflight`, gate `synthetic_allowlist`; logo,
+o preflight completo está **bloqueado pela configuração atual**, independentemente
+da existência de OS. A contagem não comprova fixture ou proveniência no RDS.
+
+O plano mínimo futuro precisa contemplar inventário privado e allowlist aprovada
+para três identidades distintas; não basta criar dados. Nenhuma alteração de
+allowlist, Lambda ou banco foi autorizada/executada nesta revisão.
+
+Para repetir somente a contagem, no host do operador com o preâmbulo aprovado
+(`aws_stage`), sem imprimir a variável completa:
+
+```bash
+aws_stage lambda get-function-configuration --function-name oficina-staging-auth \
+  --query Environment.Variables.AUTH_SYNTHETIC_CUSTOMER_IDS --output text | \
+  python3 -c 'import json,sys; ids=json.load(sys.stdin); print(json.dumps({"allowlist_count":len(ids),"distinct":len(set(ids))}))'
+```
+
+## Execução complementar: suíte Python sem skips
+
+No commit `09f3b0d0b51ef17545cbbc6be32223497b434863`, a suíte completa passou:
+**200 testes, zero falhas/erros/skips**, Python 3.13.18 e PostgreSQL 16.15 com TLS
+`verify-full` real. Inclui os 92 testes do smoke e os 22 testes PostgreSQL que
+haviam ficado pendentes na primeira execução. Contrato SQL Java fixado em
+`57eb5df2c3e32fe5663596cbecfcd43a5d3ed780`, igual à CI existente.
+
+[Evidência sanitizada](private-transport-tests.json). Container e rede Docker eram
+exclusivos, porta publicada somente em 127.0.0.1, dados em tmpfs e credenciais
+aleatórias temporárias. Cleanup confirmou remoção de container/rede, certificados,
+senhas e temporários. Nenhum acesso ao RDS/AWS ocorreu nessa suíte; os testes de
+smoke continuam simulando transporte SSM/HTTP. O PostgreSQL real comprova os
+contratos SQL/TLS locais, não os dados de staging.
+
+A PR corretiva #8 usa base `test/fase3-cpf-demo`; o workflow atual só executa em
+PRs para main/push main. Ausência de checks nessa base não é CI aprovada. Exigir
+Auth CI no SHA final ao integrar a correção em #6; a sequência documental continua
+#6/correção antes de #7. Os commits posteriores ao SHA testado alteram apenas
+relatos/evidências, sem mudança no código Python.
