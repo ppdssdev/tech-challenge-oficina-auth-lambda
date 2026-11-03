@@ -84,6 +84,10 @@ def validate_inputs(data):
     for name in ('owner', 'other'):
         require(str(UUID(data[name]['order_id'])) == data[name]['order_id'], 'order_uuid')
     require(data['owner']['order_id'] != data['other']['order_id'], 'distinct_orders')
+    validate_release_inputs(data)
+
+
+def validate_release_inputs(data):
     require(re.fullmatch(r'[A-Za-z0-9+/]{43}=', data['code_sha256']), 'code_hash')
     require(data['version'] == '$LATEST' or re.fullmatch(r'[1-9][0-9]*', data['version']),
             'explicit_version')
@@ -121,7 +125,8 @@ def clients():
     return result
 
 
-def preflight(c, data, evidence):
+def preflight(c, data, evidence, identity_names=('owner', 'other', 'inactive')):
+    require(identity_names in (('owner',), ('owner', 'other', 'inactive')), 'identity_scope')
     lam, gateway = c['lambda'], c['apigatewayv2']
     require(lam.get_function_concurrency(FunctionName=FUNCTION).get(
         'ReservedConcurrentExecutions') == 0, 'initial_concurrency_zero')
@@ -142,7 +147,7 @@ def preflight(c, data, evidence):
     require(all(env['JWT_' + key.upper()] == data[key] for key in ('issuer', 'audience', 'kid')),
             'lambda_jwt_trust')
     allowed = json.loads(env['AUTH_SYNTHETIC_CUSTOMER_IDS'])
-    require(all(data[n]['customer_id'] in allowed for n in ('owner', 'other', 'inactive')),
+    require(all(data[n]['customer_id'] in allowed for n in identity_names),
             'synthetic_allowlist')
     signing_arn = lam.get_function_code_signing_config(FunctionName=FUNCTION)['CodeSigningConfigArn']
     signing = lam.get_code_signing_config(CodeSigningConfigArn=signing_arn)['CodeSigningConfig']
@@ -209,7 +214,7 @@ SELECT current_user = 'oficina_lambda'
 """
 
 
-def audit_database(data, password, evidence, connect=None):
+def audit_database(data, password, evidence, connect=None, owner_only=False):
     if connect is None:
         import psycopg
         connect = psycopg.connect
@@ -229,7 +234,9 @@ def audit_database(data, password, evidence, connect=None):
         require(conn.execute('SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()').fetchone()
                 == (True,), 'db_tls')
         require(conn.execute(PRIVILEGES_SQL).fetchone() == (True,), 'db_effective_privileges')
-        for name, active in (('owner', True), ('other', True), ('inactive', False), ('missing', None)):
+        identities = (('owner', True),) if owner_only else (
+            ('owner', True), ('other', True), ('inactive', False), ('missing', None))
+        for name, active in identities:
             cpf = data['missing_cpf'] if name == 'missing' else data[name]['cpf']
             rows = conn.execute('SELECT customer_id, active FROM auth.customer_identity_v2 '
                                 'WHERE cpf = %s LIMIT 2', (cpf,)).fetchall()
@@ -370,6 +377,43 @@ def scenarios(lam, data, evidence, get=None):
         evidence.check(name, matches, status)
 
 
+def validate_owner_inputs(data):
+    from auth.request import valid_cpf
+    require(data['synthetic_only'] is True and data.get('owner_order_confirmed') is True
+            and data.get('admin_trust_ready') is True
+            and isinstance(data.get('provenance_ref'), str) and data['provenance_ref'].strip(),
+            'owner_only_attestations')
+    item = data['owner']
+    require(valid_cpf(item['cpf']) and str(UUID(item['customer_id'])) == item['customer_id'],
+            'synthetic_identity_shape')
+    require(str(UUID(item['order_id'])) == item['order_id'], 'order_uuid')
+    validate_release_inputs(data)
+
+
+def owner_scenarios(lam, data, evidence):
+    status, body = http_get(data['jwks_url'])
+    require(status == 200, 'jwks_http')
+    jwks = json.loads(body)
+    status, body = invoke(lam, data['owner']['cpf'], data['version'])
+    require(status == 200 and set(body) == {'access_token', 'token_type', 'expires_in'}
+            and body['token_type'] == 'Bearer' and body['expires_in'] == 900, 'token_owner')
+    token = body['access_token']
+    verify_token(token, data, data['owner']['customer_id'], jwks)
+    evidence.check('lambda_direct_rs256_owner', True)
+    path = '/api/v1/customer/work-orders/' + data['owner']['order_id']
+    base = data['java_url'].rstrip('/')
+    for name, route, bearer, expected in (
+        ('java_owner', path, token, 200),
+        ('java_missing_token', path, None, 401),
+        ('java_customer_admin_contract', '/api/v1/admin/work-orders', token, 403),
+    ):
+        status, response = java_get(data, base + route, bearer)
+        matches = status == expected
+        if expected == 200:
+            matches = matches and json.loads(response).get('id') == data['owner']['order_id']
+        evidence.check(name, matches, status)
+
+
 class CleanupDeadline(BaseException):
     """Escape SDK retry/error handlers when the independent cleanup budget expires."""
 
@@ -422,6 +466,7 @@ def interrupted(signum, frame):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=['preflight', 'window', 'close', 'watchdog'])
+    parser.add_argument('--scope', choices=['full', 'owner-only'], default='full')
     parser.add_argument('--input', help='Operator-owned mode-0600 JSON outside checkout')
     parser.add_argument('--authorized', action='store_true')
     parser.add_argument('--recovery-armed', action='store_true')
@@ -454,15 +499,26 @@ def main(argv=None):
                 close_window(c['lambda'], evidence)
             return int(evidence.failed)
         data = private_json(args.input)
-        validate_inputs(data)
-        preflight(c, data, evidence)
+        if args.scope == 'owner-only':
+            print(json.dumps({'scope': 'owner-only', 'full_suite': 'NOT_RUN',
+                              'cross_customer_404': 'PENDING',
+                              'other_full_suite_scenarios': 'NOT_RUN'}), flush=True)
+            validate_owner_inputs(data)
+            preflight(c, data, evidence, identity_names=('owner',))
+        else:
+            validate_inputs(data)
+            preflight(c, data, evidence)
         password = getpass.getpass('Senha do reader (não gravada): ')
-        audit_database(data, password, evidence)
+        if args.scope == 'owner-only':
+            audit_database(data, password, evidence, owner_only=True)
+        else:
+            audit_database(data, password, evidence)
         del password
         if args.mode == 'window':
             # The deadline includes confirmation, credentials and both preflights.
             require(time.monotonic() - started < 180, 'window_deadline_before_open')
-            run_window(c['lambda'], lambda: scenarios(c['lambda'], data, evidence), evidence)
+            work = owner_scenarios if args.scope == 'owner-only' else scenarios
+            run_window(c['lambda'], lambda: work(c['lambda'], data, evidence), evidence)
         else:
             require(c['lambda'].get_function_concurrency(FunctionName=FUNCTION).get(
                 'ReservedConcurrentExecutions') == 0, 'preflight_final_zero')

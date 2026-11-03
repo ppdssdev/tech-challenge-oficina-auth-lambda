@@ -565,3 +565,64 @@ def test_cleanup_has_independent_deadline_and_never_claims_zero_on_expiry(monkey
 def test_cleanup_alarm_escapes_sdk_exception_handlers():
     with pytest.raises(demo.CleanupDeadline):
         demo.cleanup_expired(signal.SIGALRM, None)
+
+
+def test_owner_scope_requires_only_a_and_keeps_full_validation(data, clients):
+    owner_data = {k: v for k, v in data.items() if k not in ('other', 'inactive', 'missing_cpf')}
+    owner_data.update(owner_order_confirmed=True, admin_trust_ready=True, provenance_ref='private-record')
+    demo.validate_owner_inputs(owner_data)
+    env = clients['lambda'].get_function_configuration.return_value['Environment']['Variables']
+    env['AUTH_SYNTHETIC_CUSTOMER_IDS'] = json.dumps([data['owner']['customer_id']])
+    demo.preflight(clients, owner_data, demo.Evidence(), identity_names=('owner',))
+    with pytest.raises(KeyError):
+        demo.validate_inputs(owner_data)
+    with pytest.raises(demo.CheckFailed, match='synthetic_allowlist'):
+        demo.preflight(clients, data, demo.Evidence())
+
+
+@pytest.mark.parametrize('admin_status', [403, 401])
+def test_owner_only_real_signature_three_exact_gets(data, signed, monkeypatch, capsys, admin_status):
+    sign, jwks = signed
+    token = sign(data['owner']['customer_id'])
+    invoke = Mock(return_value=(200, dict(access_token=token, token_type='Bearer', expires_in=900)))
+    monkeypatch.setattr(demo, 'invoke', invoke)
+    monkeypatch.setattr(demo, 'http_get', Mock(return_value=(200, json.dumps(jwks).encode())))
+    get = Mock(side_effect=[(200, json.dumps({'id': data['owner']['order_id']}).encode()),
+                            (401, b'{}'), (admin_status, b'{}')])
+    monkeypatch.setattr(demo, 'java_get', get)
+    evidence = demo.Evidence()
+    demo.owner_scenarios(Mock(), data, evidence)
+    invoke.assert_called_once()
+    assert get.call_count == 3
+    assert get.call_args_list[0].args[1] == get.call_args_list[1].args[1]
+    assert get.call_args_list[1].args[2] is None
+    assert get.call_args_list[2].args[1].endswith('/api/v1/admin/work-orders')
+    assert evidence.failed == (admin_status != 403)
+    output = capsys.readouterr().out
+    assert token not in output and data['owner']['cpf'] not in output
+    assert data['owner']['customer_id'] not in output and data['owner']['order_id'] not in output
+
+
+def test_owner_only_wrong_issuer_stops_before_java(data, signed, monkeypatch):
+    sign, jwks = signed
+    monkeypatch.setattr(demo, 'http_get', Mock(return_value=(200, json.dumps(jwks).encode())))
+    monkeypatch.setattr(demo, 'invoke', Mock(return_value=(200, dict(
+        access_token=sign(data['owner']['customer_id'], iss='https://wrong.test'),
+        token_type='Bearer', expires_in=900))))
+    get = Mock()
+    monkeypatch.setattr(demo, 'java_get', get)
+    with pytest.raises(jwt.InvalidIssuerError):
+        demo.owner_scenarios(Mock(), data, demo.Evidence())
+    get.assert_not_called()
+
+
+def test_owner_database_checks_only_a_readonly(data):
+    conn = Mock()
+    conn.__enter__ = Mock(return_value=conn)
+    conn.__exit__ = Mock(return_value=False)
+    conn.execute.return_value.fetchone.side_effect = [('on',), (True,), (True,)]
+    conn.execute.return_value.fetchall.return_value = [(data['owner']['customer_id'], True)]
+    demo.audit_database(data, 'private', demo.Evidence(), connect=Mock(return_value=conn), owner_only=True)
+    assert conn.execute.call_count == 4
+    assert conn.execute.call_args.args[1] == (data['owner']['cpf'],)
+    conn.rollback.assert_called_once()

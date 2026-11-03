@@ -119,3 +119,5 @@ O relato original não incluía CD nem operações AWS; leituras posteriores est
 `python -m pytest -q tests/test_cpf_demo.py` valida o smoke com AWS/HTTP/SQL mockados,
 sem rede. Os modos operacionais de `scripts.cpf_demo` exigem autorização interativa
 futura; invocação direta da Lambda não demonstra HTTP/IAM no Gateway desabilitado.
+
+Roteiro parcial com fixture A confirmada: [janela owner-only 200/401/403](docs/fase3/owner-only-window.md). A suíte completa permanece padrão; 404 cruzado continua pendente em staging.

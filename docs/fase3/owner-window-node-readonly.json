@@ -1,0 +1,84 @@
+{
+  "legacy_pem_enabled": false,
+  "legacy_pem_key_count": 0,
+  "legacy_issuer_matches_jwks": false,
+  "legacy_audience_matches_jwks": false,
+  "trust_environment_sources": {
+    "SPRING_CONFIG_ADDITIONAL_LOCATION": {
+      "literal_present": true,
+      "configmap": {},
+      "secret_ref_present": false
+    },
+    "CUSTOMER_JWKS_URI": {
+      "literal_present": false,
+      "configmap": {
+        "key": "jwks-uri",
+        "name": "oficina-customer-jwt"
+      },
+      "secret_ref_present": false
+    },
+    "CUSTOMER_JWT_ISSUER": {
+      "literal_present": false,
+      "configmap": {
+        "key": "issuer",
+        "name": "oficina-customer-jwt"
+      },
+      "secret_ref_present": false
+    },
+    "CUSTOMER_JWT_AUDIENCE": {
+      "literal_present": false,
+      "configmap": {
+        "key": "audience",
+        "name": "oficina-customer-jwt"
+      },
+      "secret_ref_present": false
+    }
+  },
+  "pods": [
+    {
+      "name": "oficina-api-6d45b76d7f-6rphl",
+      "containers": [
+        {
+          "ready": true,
+          "image": "sha256:df94d0ae5b959a452486ffa4f4a9c3b0aca9a1c41ecbb4d5328ec2688b3d2294",
+          "imageID": "797781632267.dkr.ecr.us-east-2.amazonaws.com/oficina-staging-api@sha256:8ca6d21e1a7723b59cb68268bf1dce683a0b3a951de7e14a646e1a5d5267e00b"
+        }
+      ]
+    },
+    {
+      "name": "oficina-api-6d45b76d7f-8mqq8",
+      "containers": [
+        {
+          "ready": true,
+          "image": "sha256:df94d0ae5b959a452486ffa4f4a9c3b0aca9a1c41ecbb4d5328ec2688b3d2294",
+          "imageID": "797781632267.dkr.ecr.us-east-2.amazonaws.com/oficina-staging-api@sha256:8ca6d21e1a7723b59cb68268bf1dce683a0b3a951de7e14a646e1a5d5267e00b"
+        }
+      ]
+    },
+    {
+      "name": "oficina-api-6d45b76d7f-9f9l6",
+      "containers": [
+        {
+          "ready": true,
+          "image": "sha256:df94d0ae5b959a452486ffa4f4a9c3b0aca9a1c41ecbb4d5328ec2688b3d2294",
+          "imageID": "797781632267.dkr.ecr.us-east-2.amazonaws.com/oficina-staging-api@sha256:8ca6d21e1a7723b59cb68268bf1dce683a0b3a951de7e14a646e1a5d5267e00b"
+        }
+      ]
+    }
+  ],
+  "tools": {
+    "psql": false,
+    "python3": true,
+    "openssl": true
+  },
+  "python_yaml": true,
+  "public_config_keys": [
+    "audience",
+    "customer-jwt.yml",
+    "issuer",
+    "jwks-uri"
+  ],
+  "env_from_present": false,
+  "customer_jwks_https": true,
+  "service_type": "ClusterIP"
+}
