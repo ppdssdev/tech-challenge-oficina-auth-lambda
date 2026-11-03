@@ -49,13 +49,17 @@ No host do operador, validar identidade e alvo aprovado; os valores de referênc
 não substituem a consulta atual:
 
 ```bash
-export AWS_PROFILE=oficina-staging AWS_REGION=us-east-2
+set -euo pipefail
+set +x
+export AWS_PAGER='' AWS_CLI_AUTO_PROMPT=off AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=true
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SECURITY_TOKEN
+aws_stage() { aws --profile oficina-staging --region us-east-2 "$@"; }
 export OFICINA_NODE=i-0ab373b1ba5c14b3e
-aws sts get-caller-identity --query Account --output text
-aws ssm describe-instance-information \
+test "$(aws_stage sts get-caller-identity --query Account --output text)" = 797781632267
+aws_stage ssm describe-instance-information \
   --filters "Key=InstanceIds,Values=$OFICINA_NODE" \
   --query 'InstanceInformationList[].{Instance:InstanceId,Status:PingStatus}'
-aws ssm start-session --target "$OFICINA_NODE"
+aws_stage ssm start-session --target "$OFICINA_NODE"
 ```
 
 Exigir conta `797781632267`, alvo validado e status Online. Dentro da sessão SSM,
@@ -70,10 +74,10 @@ sudo k3s kubectl -n oficina-staging port-forward --address 127.0.0.1 \
 ```
 
 Não usar `--insecure-skip-tls-verify` ou exportar kubeconfig administrativo.
-Manter a sessão viva. Em outro terminal do host do operador:
+Manter a sessão viva. Em outro terminal do host do operador, repetir o preâmbulo `aws_stage` acima:
 
 ```bash
-aws ssm start-session --target "$OFICINA_NODE" \
+aws_stage ssm start-session --target "$OFICINA_NODE" \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["18080"],"localPortNumber":["18080"]}'
 ```
@@ -97,11 +101,11 @@ do inventário aprovado; não publicar o JSON completo:
 ```
 
 Para RDS, manter `db_host` igual ao DNS RDS aprovado e a CA confiável. Em outro
-terminal, preencher apenas esse hostname a partir da inspeção autorizada:
+terminal (com o mesmo preâmbulo `aws_stage`), preencher apenas esse hostname a partir da inspeção autorizada:
 
 ```bash
 read -r -p 'DNS RDS aprovado: ' OFICINA_RDS_HOST
-aws ssm start-session --target "$OFICINA_NODE" \
+aws_stage ssm start-session --target "$OFICINA_NODE" \
   --document-name AWS-StartPortForwardingSessionToRemoteHost \
   --parameters "$(jq -cn --arg host "$OFICINA_RDS_HOST" \
     '{host:[$host],portNumber:["5432"],localPortNumber:["15432"]}')"
