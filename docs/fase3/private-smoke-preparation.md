@@ -132,3 +132,9 @@ audience adulterados → 401. Chaves efêmeras locais; nenhum JWT staging emitid
 Primeira tentativa restrita falhou por sandbox negar Docker; repetição com acesso
 Docker local aprovado passou. Não confundir patch ConfigMap não aplicado com
 execução do Java implantado.
+
+Execução complementar final: **48 testes Java passaram, zero erros/falhas/skips**,
+incluindo emissor Python real, com `-Dlambda.repo=/tmp/oficina-security-review/lambda`
+e `-Dlambda.python=/tmp/lambda-v2-validation.bbK2ghVL/venv/bin/python`.
+O teste `realPythonSignerAuthenticatesAsCustomer` usa o signer Lambda real com chave
+local efêmera; continua sem emissão staging. Esta execução supera o skip inicial.
