@@ -107,3 +107,11 @@ final e usar seu checksum. Nenhuma assinatura/operação AWS foi executada local
 Terraform em `infra/terraform` consome contratos K3s v3 e RDS `oficina_db`, sem criar
 rede, banco, endpoint ou secret values. `terraform test` usa exclusivamente mocks.
 Não há CD, operações AWS, apply/destroy, branch, commit ou PR nesta entrega.
+
+## Demonstração CPF da Fase 3
+
+[Runbook seguro](docs/fase3/cpf-demo-runbook.md) e
+[matriz de evidências esperadas](docs/fase3/cpf-demo-evidence.md).
+`python -m pytest -q tests/test_cpf_demo.py` valida o smoke com AWS/HTTP/SQL mockados,
+sem rede. Os modos operacionais de `scripts.cpf_demo` exigem autorização interativa
+futura; invocação direta da Lambda não demonstra HTTP/IAM no Gateway desabilitado.

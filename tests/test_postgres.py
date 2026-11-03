@@ -224,3 +224,17 @@ def test_real_tls_verifies_hostname_and_trust(runtime_dsn, tmp_path):
 def test_real_connection_failure():
     with pytest.raises(psycopg.OperationalError):
         PostgresIdentityLookup('host=127.0.0.1 port=1 dbname=missing sslmode=verify-full').find('52998224725')
+
+
+def test_demo_catalog_audit_accepts_real_reader_and_rejects_extra_grant(database):
+    from scripts.cpf_demo import PRIVILEGES_SQL
+    admin, adapter = database
+    with psycopg.connect(adapter.database_url) as reader:
+        assert reader.execute(PRIVILEGES_SQL).fetchone() == (True,)
+    # Disposable local database fixture only; never used by the operational smoke.
+    admin.execute('GRANT SELECT ON public.customers TO oficina_lambda')
+    try:
+        with psycopg.connect(adapter.database_url) as reader:
+            assert reader.execute(PRIVILEGES_SQL).fetchone() == (False,)
+    finally:
+        admin.execute('REVOKE SELECT ON public.customers FROM oficina_lambda')
