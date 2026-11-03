@@ -108,3 +108,14 @@ Para validação estática: `terraform -chdir=infra/terraform init -backend=fals
 Relatórios de prompts são históricos e não certificam estado atual. Pendentes:
 proveniência do artefato cloud, assinatura, grants/TLS, janela sintética E2E,
 rotação, OIDC/CD e autenticação adequada antes de qualquer uso real.
+Terraform em `infra/terraform` consome contratos K3s v3 e RDS `oficina_db`, sem criar
+rede, banco, endpoint ou secret values. `terraform test` usa exclusivamente mocks.
+O relato original não incluía CD nem operações AWS; leituras posteriores estão nos adendos datados.
+
+## Demonstração CPF da Fase 3
+
+[Runbook seguro](docs/fase3/cpf-demo-runbook.md) e
+[matriz de evidências esperadas](docs/fase3/cpf-demo-evidence.md).
+`python -m pytest -q tests/test_cpf_demo.py` valida o smoke com AWS/HTTP/SQL mockados,
+sem rede. Os modos operacionais de `scripts.cpf_demo` exigem autorização interativa
+futura; invocação direta da Lambda não demonstra HTTP/IAM no Gateway desabilitado.

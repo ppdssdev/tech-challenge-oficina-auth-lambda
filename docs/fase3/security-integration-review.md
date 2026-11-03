@@ -91,3 +91,11 @@ contém a correção do adapter e prazo de cleanup, empilhada sobre #6. Sua base
 aciona o workflow atual; exigir CI no SHA final antes da integração em main.
 O [runbook corretivo](https://github.com/ppdssdev/tech-challenge-oficina-auth-lambda/blob/fix/private-cpf-review/docs/fase3/private-transport-review.md)
 traz os comandos privados e limites. A janela continua não autorizada nesta frente.
+
+## Atualização posterior: preparação operacional
+
+A correção #8 foi incorporada à #6 em `4058acf`, com Auth CI aprovado.
+Esta branch documental incorpora esse resultado sem merge em main e preserva os
+READMEs. O [novo adendo](private-smoke-preparation.md) substitui os bloqueios
+preliminares por evidência datada, patch PEM isolado não aplicado, primeiro bloco
+read-only e plano mínimo. Os relatos acima permanecem históricos.
