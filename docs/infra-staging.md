@@ -1,3 +1,9 @@
+> **Leitura atualizada em 2026-11-03:** este runbook conserva o contexto da sua
+> preparação original. A existência de recursos cloud e o CI atual estão em
+> [evidências consolidadas](fase3-evidence.md); itens não observados continuam pendentes.
+> Backend S3 já está definido em código; não interpretar menções históricas a backend
+> local ou “nenhum recurso provisionado nesta etapa” como estado atual do ambiente.
+
 # Lambda auth — contrato staging para revisão
 
 Atualizado na sincronização V2. [Contrato e validações atuais](fase3/lambda-v2-sync.md). [Resultados, classificação dos oito achados e bloqueios](prompt13-security-integration.md).

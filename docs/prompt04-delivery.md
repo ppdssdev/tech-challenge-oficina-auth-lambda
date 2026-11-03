@@ -1,3 +1,6 @@
+> **Registro histórico:** resultados e pendências abaixo pertencem à etapa original.
+> Estado vigente em 2026-11-03: [consolidação auditada](fase3-evidence.md).
+
 > Registro histórico do Prompt 04. Estado atual, testes e pendências: [Prompt 12](prompt12-integration.md).
 
 > Evidência histórica, anterior à reconciliação V11. Referências a V8/V1, hashes,
@@ -65,7 +68,7 @@ Estrutura e instruções completas no [README](../README.md). Arquivos principai
 `docs/fase3/auth-identity-view.md`. Nenhuma migration V1–V9 foi alterada.
 
 Exemplo sintético: `POST /auth/token`, `Content-Type: application/json`,
-`{"cpf":"52998224725"}`. Se o banco contiver exatamente uma identidade ativa:
+`{"cpf":"<CPF_SINTETICO_VALIDO>"}`. Se o banco contiver exatamente uma identidade ativa:
 `{"access_token":"<JWT RS256>","token_type":"Bearer","expires_in":900}`.
 Caso contrário, `401 {"code":"AUTHENTICATION_FAILED"}`; entrada inválida recebe 400;
 falha interna/dependência recebe 503. Headers JSON e `Cache-Control: no-store`.

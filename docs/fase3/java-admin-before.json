@@ -1,0 +1,9 @@
+{
+  "resourceVersion": "6362",
+  "data": {
+    "audience": "oficina-staging-demo",
+    "customer-jwt.yml": "app:\n  jwt:\n    customer:\n      enabled: false\n",
+    "issuer": "https://synthetic-issuer.invalid",
+    "jwks-uri": "https://raw.githubusercontent.com/ppdssdev/tech-challenge-oficina/main/docs/staging/customer-jwks.json"
+  }
+}

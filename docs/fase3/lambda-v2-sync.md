@@ -1,3 +1,6 @@
+> **Registro histórico:** resultados e pendências abaixo pertencem à etapa original.
+> Estado vigente em 2026-11-03: [consolidação auditada](../fase3-evidence.md).
+
 # Fase 3 — sincronização Lambda com SQL V2
 
 Revisão local em 2026-11-02. Implementação preparada; **deploy não liberado**.

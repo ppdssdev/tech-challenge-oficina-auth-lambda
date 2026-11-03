@@ -1,0 +1,12 @@
+{
+  "observed_at": "2026-11-03T18:15:11.369644+00:00",
+  "issuer_matches": true,
+  "audience_matches": true,
+  "kid_in_https_jwks": true,
+  "rsa_bits": 3072,
+  "legacy_pem_enabled": false,
+  "legacy_key_count": 0,
+  "patch_applied": false,
+  "jwt_issued_or_sent": false,
+  "java_http_tested": false
+}

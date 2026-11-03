@@ -1,3 +1,6 @@
+> **Registro histórico:** resultados e pendências abaixo pertencem à etapa original.
+> Estado vigente em 2026-11-03: [consolidação auditada](fase3-evidence.md).
+
 # Prompt 12 — fechamento da integração Lambda / Java / RDS
 
 > Evidência histórica, anterior à reconciliação V11. Referências a V8/V1, hashes,

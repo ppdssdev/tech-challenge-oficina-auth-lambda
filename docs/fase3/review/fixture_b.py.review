@@ -1,0 +1,89 @@
+"""REVIEW ONLY. No connection, credentials, CLI, or automatic execution.
+Pass an approved psycopg connection and a privately reviewed plan to these
+functions ONLY after separate authorization for database writes.
+All ids/plate/code must be reserved in the private plan before the transaction.
+"""
+
+
+if not __debug__:
+    raise RuntimeError('optimized_python_not_supported')
+
+
+def one(cur):
+    if cur.rowcount != 1:
+        raise RuntimeError('fixture_row_count_mismatch')
+
+
+def settings(c, readonly=False):
+    c.execute('SET TRANSACTION ' + ('READ ONLY' if readonly else 'READ WRITE'))
+    c.execute("SET LOCAL statement_timeout='3s'")
+    c.execute("SET LOCAL lock_timeout='1s'")
+
+
+def preconditions(p):
+    assert p['b'] != p['a']
+    assert p['provenance_ref'] and p['reviewed_synthetic'] is True
+    assert type(p['new_customer']) is bool and type(p['new_vehicle']) is bool
+    assert not p['new_customer'] or p['new_vehicle']
+    # A unique run label is reserved in the private manifest, never reused.
+    assert p['marker'].startswith('SMOKE-B-') and len(p['marker']) <= 60
+
+
+def create(c, p):
+    preconditions(p)
+    with c.transaction():
+        settings(c)
+        if p['new_customer']:
+            # CPF must come from the approved synthetic manifest, not an existing person.
+            from auth.request import valid_cpf
+            assert valid_cpf(p['cpf'])
+            assert c.execute("SELECT count(*) FROM public.customers WHERE document_type='CPF' AND regexp_replace(document_number,'[^0-9]','','g')=%s", (p['cpf'],)).fetchone() == (0,)
+            one(c.execute("INSERT INTO public.customers(id,full_name,document_type,document_number,email,phone,active,created_at,updated_at) VALUES (%s,%s,'CPF',%s,NULL,NULL,true,now(),now())", (p['b'],p['marker'],p['cpf'])))
+            one(c.execute('INSERT INTO auth.customer_access(customer_id,active) VALUES (%s,true)', (p['b'],)))
+        else:
+            # Lock the pre-existing identity. Never update its CPF, name or eligibility.
+            assert c.execute('SELECT id FROM public.customers WHERE id=%s FOR UPDATE', (p['b'],)).fetchone() is not None
+        assert c.execute('SELECT count(*) FROM auth.customer_identity_v2 WHERE customer_id=%s AND active', (p['b'],)).fetchone() == (1,)
+        if p['new_vehicle']:
+            one(c.execute("INSERT INTO public.vehicles(id,customer_id,plate,brand,model,manufacturing_year,created_at,updated_at) VALUES (%s,%s,%s,'SINTETICO',%s,2020,now(),now())", (p['vehicle'],p['b'],p['plate'],p['marker'])))
+        else:
+            assert c.execute('SELECT id FROM public.vehicles WHERE id=%s AND customer_id=%s FOR UPDATE', (p['vehicle'],p['b'])).fetchone() is not None
+        one(c.execute("INSERT INTO public.work_orders(id,code,customer_id,vehicle_id,status,diagnostic_notes,total_services,total_parts,total_amount,created_at,updated_at) VALUES (%s,%s,%s,%s,'RECEIVED',%s,0,0,0,now(),now())", (p['order'],p['code'],p['b'],p['vehicle'],p['marker'])))
+        assert c.execute('SELECT count(*) FROM public.work_orders w JOIN public.vehicles v ON v.id=w.vehicle_id AND v.customer_id=w.customer_id WHERE w.id=%s AND w.customer_id=%s', (p['order'],p['b'])).fetchone() == (1,)
+    # Successful transaction commits. On ANY failure it rolls back completely.
+    # Caller records only success + UTC; never prints parameters or SQL errors.
+
+
+def verify(c, p):
+    with c.transaction():
+        settings(c, readonly=True)
+        assert c.execute('SHOW transaction_read_only').fetchone() == ('on',)
+        assert c.execute('SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()').fetchone() == (True,)
+        return {
+            'b_active_v2': c.execute('SELECT EXISTS(SELECT 1 FROM auth.customer_identity_v2 WHERE customer_id=%s AND active)', (p['b'],)).fetchone()[0],
+            'own_a': c.execute('SELECT EXISTS(SELECT 1 FROM public.work_orders WHERE id=%s AND customer_id=%s)', (p['a_order'],p['a'])).fetchone()[0],
+            'own_b_with_vehicle': c.execute('SELECT EXISTS(SELECT 1 FROM public.work_orders w JOIN public.vehicles v ON v.id=w.vehicle_id AND v.customer_id=w.customer_id WHERE w.id=%s AND w.customer_id=%s)', (p['order'],p['b'])).fetchone()[0],
+            'b_cannot_own_a': not c.execute('SELECT EXISTS(SELECT 1 FROM public.work_orders WHERE id=%s AND customer_id=%s)', (p['a_order'],p['b'])).fetchone()[0],
+        }
+
+
+def cleanup(c, p):
+    preconditions(p)
+    with c.transaction():
+        settings(c)
+        # Require a pristine fixture. Changed orders must be reviewed, never force-deleted.
+        assert c.execute("SELECT id FROM public.work_orders WHERE id=%s AND customer_id=%s AND vehicle_id=%s AND code=%s AND diagnostic_notes=%s AND status='RECEIVED' AND total_services=0 AND total_parts=0 AND total_amount=0 AND customer_authorized_at IS NULL AND started_at IS NULL AND finished_at IS NULL AND delivered_at IS NULL AND updated_at=created_at FOR UPDATE", (p['order'],p['b'],p['vehicle'],p['code'],p['marker'])).fetchone() is not None
+        for table in ('work_order_service_items','work_order_part_items','work_order_status_history'):
+            assert c.execute('SELECT count(*) FROM public.'+table+' WHERE work_order_id=%s', (p['order'],)).fetchone() == (0,)
+        assert c.execute('SELECT count(*) FROM public.notification_outbox WHERE work_order_code=%s', (p['code'],)).fetchone() == (0,)
+        assert c.execute('SELECT count(*) FROM public.idempotency_records WHERE resource_code=%s', (p['code'],)).fetchone() == (0,)
+        one(c.execute('DELETE FROM public.work_orders WHERE id=%s', (p['order'],)))
+        if p['new_vehicle']:
+            # Foreign keys block deletion if this vehicle has acquired another order.
+            one(c.execute("DELETE FROM public.vehicles WHERE id=%s AND customer_id=%s AND plate=%s AND brand='SINTETICO' AND model=%s AND updated_at=created_at", (p['vehicle'],p['b'],p['plate'],p['marker'])))
+        if p['new_customer']:
+            assert c.execute('SELECT count(*) FROM public.work_orders WHERE customer_id=%s', (p['b'],)).fetchone() == (0,)
+            assert c.execute('SELECT count(*) FROM public.vehicles WHERE customer_id=%s', (p['b'],)).fetchone() == (0,)
+            one(c.execute('DELETE FROM auth.customer_access WHERE customer_id=%s AND active', (p['b'],)))
+            one(c.execute('DELETE FROM public.customers WHERE id=%s AND full_name=%s AND document_number=%s AND updated_at=created_at', (p['b'],p['marker'],p['cpf'])))
+    # Never delete a reused customer/vehicle, A, or any pre-existing access row.

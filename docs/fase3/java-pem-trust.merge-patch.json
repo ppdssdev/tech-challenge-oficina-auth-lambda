@@ -1,0 +1,9 @@
+{
+  "metadata": {
+    "resourceVersion": "6362"
+  },
+  "data": {
+    "customer-jwt.yml": "app:\n  jwt:\n    customer:\n      enabled: true\n      issuer: \"https://synthetic-issuer.invalid\"\n      audience: \"oficina-staging-demo\"\n      public-keys:\n        \"oficina-staging-v1\": /config/jwt/lambda-current-public.pem\n",
+    "lambda-current-public.pem": "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAkk2wMBRAnv5ZAeY7VwS+\n0rJzSlZRFeAzn4o1oLcd4c0Jydg581qhi77yJaBbDh5sS6oKPeAlRVWhER2t+0BN\nquUBiE9JI8OU+BJhj01xxUgjuCwdunvEasiC1P6VIeZqfDfdHqgTmDfeCpSs6y1f\nvhJePCjqVTB4U+gAR5siDXo7frKmgASQiO1CvfKooHACcZBbL1gcHHzQ7Zn6ukgG\nJYm6HrGxOM5qrsv1ibpefCvEeH2gUk3omlL0/nVNI6xQZeyw6TubV3pdvwfQwisY\nU0nsDOpI3xh3Am8hnTeEn2mqfxv+UoS6CLPc+P0p9I6usv6QU34VAdyG8c1FExGM\nz7FbZ4eUlxCHOI/uqTEClkNXYXjWN9JmHKwEU3QNY344OTPS7zr3mwg/vljUBF2V\nsBlne8WaGZQjFSbKmFyWH73AC+y2IE5jrqix4Ye8XnSeTJr+1VurgU7beHyoUcGr\n3w0fV9hlyj0YCaWq1MsWOz0+ALiOMKHoSy6FDvszFeB9AgMBAAE=\n-----END PUBLIC KEY-----\n"
+  }
+}
