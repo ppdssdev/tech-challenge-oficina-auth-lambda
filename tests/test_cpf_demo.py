@@ -426,3 +426,20 @@ def test_watchdog_interruption_closes_without_opening(monkeypatch):
     assert demo.main(['watchdog', '--authorized']) == 1
     lam.put_function_concurrency.assert_called_once_with(
         FunctionName=demo.FUNCTION, ReservedConcurrentExecutions=0)
+
+
+def test_elapsed_consent_or_credentials_cannot_open_after_deadline(monkeypatch, data, capsys):
+    monkeypatch.delenv('CI', raising=False)
+    monkeypatch.setattr(demo.sys.stdin, 'isatty', lambda: True)
+    monkeypatch.setattr(demo.getpass, 'getpass', lambda _: 'AUTORIZO SOMENTE STAGING SINTETICO')
+    monkeypatch.setattr(demo.resource, 'setrlimit', Mock())
+    monkeypatch.setattr(demo.logging, 'disable', Mock())
+    monkeypatch.setattr(demo, 'private_json', lambda _: data)
+    monkeypatch.setattr(demo, 'preflight', Mock())
+    monkeypatch.setattr(demo, 'audit_database', Mock())
+    monkeypatch.setattr(demo.time, 'monotonic', Mock(side_effect=[0, 181]))
+    lam = Mock()
+    monkeypatch.setattr(demo, 'clients', lambda: {'lambda': lam})
+    assert demo.main(['window', '--authorized', '--recovery-armed', '--input', 'unused']) == 1
+    lam.put_function_concurrency.assert_not_called()
+    assert 'window_deadline_before_open' in capsys.readouterr().out

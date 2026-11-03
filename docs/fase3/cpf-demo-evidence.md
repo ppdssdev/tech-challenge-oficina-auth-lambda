@@ -31,6 +31,10 @@ A existência das OS é confirmada pelos GETs positivos, evitando falso sucesso 
 
 ## Evidência local desta PR
 
+- 63 testes locais do smoke passaram; Ruff e `git diff --check` passaram.
+- Primeira CI da PR, revisão `18a032028af8e908dce2642e85e9b7dd9d7d97da`: [Auth CI aprovada](https://github.com/ppdssdev/tech-challenge-oficina-auth-lambda/actions/runs/41642644081), incluindo PostgreSQL descartável e auditoria de grants.
+  A revisão posterior acrescenta a proteção contra abertura após prazo e seu teste;
+  consultar o check da revisão final na PR.
 - Testes do smoke: handler real, assinatura RSA efêmera, transports AWS/HTTP/SQL
   simulados e sockets/DNS proibidos. Cobrem sucesso, deriva de configuração,
   assinatura/claims, controles negativos, abertura ambígua, interrupções, cleanup

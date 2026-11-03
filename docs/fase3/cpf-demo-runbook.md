@@ -180,7 +180,8 @@ Todos os comandos desta seção estão **não executados nesta entrega**.
    ```
 
    Repetir a auditoria; digitar somente a senha do reader em prompt oculto. O prazo
-   de 180 s inclui preflight e esse prompt. Após os gates, reservar concorrência 2,
+   de 180 s inclui confirmação inicial, resolução das credenciais, preflight e
+   esse prompt; não é renovado antes da abertura. Após os gates, reservar concorrência 2,
    confirmar 2 e executar cinco invocações síncronas: A, B, D, C e CPF malformado.
    O SDK não solicita log tail. O script verifica também `FunctionError`, tamanho,
    versão executada, status da aplicação e `Cache-Control: no-store`.

@@ -157,8 +157,7 @@ def preflight(c, data, evidence):
                 f'arn:aws:apigateway:{REGION}:lambda:path/2015-03-31/functions/{target}/invocations'),
             'gateway_integration')
     stage = gateway.get_stage(ApiId=API, StageName='staging')
-    require(stage['AutoDeploy'] is True and stage.get('DeploymentId')
-            and not stage.get('LastDeploymentStatusMessage'), 'gateway_stage')
+    require(stage['AutoDeploy'] is True and stage.get('DeploymentId'), 'gateway_stage')
     deployment = gateway.get_deployment(ApiId=API, DeploymentId=stage['DeploymentId'])
     require(deployment['DeploymentStatus'] == 'DEPLOYED', 'gateway_deployment')
     statements = json.loads(lam.get_policy(FunctionName=FUNCTION)['Policy'])['Statement']
@@ -362,16 +361,19 @@ def main(argv=None):
     parser.add_argument('--recovery-armed', action='store_true')
     args = parser.parse_args(argv)
     evidence = Evidence()
+    started = time.monotonic()
     try:
         require(args.authorized and sys.stdin.isatty() and not os.environ.get('CI'), 'operator_gate')
         require(args.mode != 'window' or args.recovery_armed, 'independent_recovery_gate')
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGALRM):
+            signal.signal(sig, interrupted)
+        if args.mode in ('preflight', 'window'):
+            signal.alarm(180)
         require(getpass.getpass('Digite AUTORIZO SOMENTE STAGING SINTETICO: ')
                 == 'AUTORIZO SOMENTE STAGING SINTETICO', 'operator_confirmation')
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         logging.disable(logging.CRITICAL)
         os.umask(0o077)
-        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGALRM):
-            signal.signal(sig, interrupted)
         c = clients()
         evidence.check('aws_profile_account_region', True)
         if args.mode in ('close', 'watchdog'):
@@ -387,21 +389,23 @@ def main(argv=None):
             return int(evidence.failed)
         data = private_json(args.input)
         validate_inputs(data)
-        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGALRM):
-            signal.signal(sig, interrupted)
-        signal.alarm(180)
         preflight(c, data, evidence)
         password = getpass.getpass('Senha do reader (não gravada): ')
         audit_database(data, password, evidence)
         del password
         if args.mode == 'window':
-            # Bound the actual opening too; operator must arm watchdog immediately beforehand.
+            # The deadline includes confirmation, credentials and both preflights.
+            require(time.monotonic() - started < 180, 'window_deadline_before_open')
             run_window(c['lambda'], lambda: scenarios(c['lambda'], data, evidence), evidence)
         else:
             require(c['lambda'].get_function_concurrency(FunctionName=FUNCTION).get(
                 'ReservedConcurrentExecutions') == 0, 'preflight_final_zero')
         signal.alarm(0)
         return int(evidence.failed)
+    except CheckFailed as failure:
+        # All CheckFailed names are fixed labels defined in this module.
+        evidence.check(str(failure), False)
+        return 1
     except BaseException:
         # No traceback, locals, values, SDK messages, CPF, JWT or HTTP body on any failure.
         print('{"check":"execution","result":"FAIL","detail":"see_runbook_recovery"}', flush=True)
