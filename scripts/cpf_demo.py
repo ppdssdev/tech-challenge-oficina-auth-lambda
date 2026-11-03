@@ -24,6 +24,11 @@ ARN = f'arn:aws:lambda:{REGION}:{ACCOUNT}:function:{FUNCTION}'
 API = 't6p562hkc9'
 SOURCE = f'arn:aws:execute-api:{REGION}:{ACCOUNT}:{API}/staging/POST/auth/token'
 LIMIT = 65536
+CLEANUP_SECONDS = 120
+JAVA_SSM_ORIGIN = 'http://127.0.0.1:18080'
+JAVA_SMOKE_PATH = re.compile(
+    r'/api/v1/(?:admin/work-orders|customer/work-orders/'
+    r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})')
 
 
 class CheckFailed(Exception):
@@ -82,8 +87,13 @@ def validate_inputs(data):
     require(re.fullmatch(r'[A-Za-z0-9+/]{43}=', data['code_sha256']), 'code_hash')
     require(data['version'] == '$LATEST' or re.fullmatch(r'[1-9][0-9]*', data['version']),
             'explicit_version')
-    for name in ('java_url', 'jwks_url', 'issuer'):
+    java_transport(data)
+    for name in ('jwks_url', 'issuer'):
         https_url(data[name])
+    require(data.get('db_transport', 'direct-tls') in ('direct-tls', 'ssm-loopback'),
+            'db_transport')
+    if data.get('db_transport') == 'ssm-loopback':
+        require(data.get('ssm_tunnel_attested') is True, 'ssm_tunnel_attestation')
     require(bool(data['audience']) and bool(data['kid']), 'jwt_trust')
     require(re.fullmatch(r'[A-Za-z0-9.-]+\.us-east-2\.rds\.amazonaws\.com', data['db_host']),
             'rds_hostname')
@@ -203,7 +213,15 @@ def audit_database(data, password, evidence, connect=None):
     if connect is None:
         import psycopg
         connect = psycopg.connect
-    with connect(host=data['db_host'], port=5432, dbname='oficina_db', user='oficina_lambda',
+    # libpq verifies db_host against the certificate even when hostaddr is loopback.
+    tunnel = data.get('db_transport') == 'ssm-loopback'
+    require(data.get('db_transport', 'direct-tls') in ('direct-tls', 'ssm-loopback'),
+            'db_transport')
+    if tunnel:
+        require(data.get('ssm_tunnel_attested') is True, 'ssm_tunnel_attestation')
+    address = {'hostaddr': '127.0.0.1'} if tunnel else {}
+    with connect(host=data['db_host'], port=15432 if tunnel else 5432, **address,
+                 dbname='oficina_db', user='oficina_lambda',
                  password=password, sslmode='verify-full', sslrootcert=data['db_ca_file'],
                  connect_timeout=3,
                  options='-c statement_timeout=3000 -c default_transaction_read_only=on') as conn:
@@ -227,11 +245,39 @@ def http_get(url, token=None):
     # No proxy env, cookies, redirects, insecure TLS option or wire logging.
     conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=5,
                                        context=ssl.create_default_context())
+    return read_get(conn, u.path or '/', token)
+
+
+def java_transport(data):
+    transport = data.get('java_transport', 'https')
+    require(transport in ('https', 'ssm-loopback'), 'java_transport')
+    if transport == 'https':
+        https_url(data['java_url'])
+    else:
+        # This is operator attestation, not automated proof of the SSM tunnel.
+        require(data.get('ssm_tunnel_attested') is True, 'ssm_tunnel_attestation')
+        require(data['java_url'] == JAVA_SSM_ORIGIN, 'java_ssm_origin')
+    return transport
+
+
+def java_get(data, url, token=None):
+    if java_transport(data) == 'https':
+        return http_get(url, token)
+    # Exact origin and fixed read-only paths. No hostname/DNS, alternate port,
+    # URL credentials, query, fragment, prefix, proxy or redirect escape.
+    require(url.startswith(JAVA_SSM_ORIGIN + '/'), 'java_ssm_origin')
+    path = url[len(JAVA_SSM_ORIGIN):]
+    require(JAVA_SMOKE_PATH.fullmatch(path), 'java_smoke_path')
+    conn = http.client.HTTPConnection('127.0.0.1', 18080, timeout=5)
+    return read_get(conn, path, token)
+
+
+def read_get(conn, path, token):
     try:
         headers = {'Accept': 'application/json'}
         if token is not None:
             headers['Authorization'] = 'Bearer ' + token
-        conn.request('GET', u.path or '/', headers=headers)
+        conn.request('GET', path, headers=headers)
         response = conn.getresponse()
         body = response.read(LIMIT + 1)
         require(len(body) <= LIMIT, 'http_response_size')
@@ -280,8 +326,11 @@ def invoke(lam, cpf, version):
     return response['statusCode'], json.loads(response['body'])
 
 
-def scenarios(lam, data, evidence, get=http_get):
-    status, body = get(data['jwks_url'])
+def scenarios(lam, data, evidence, get=None):
+    # Injection is for offline tests only; production JWKS always uses verified HTTPS.
+    get_jwks = http_get if get is None else get
+    get_java = (lambda url, token: java_get(data, url, token)) if get is None else get
+    status, body = get_jwks(data['jwks_url'])
     require(status == 200, 'jwks_http')
     jwks = json.loads(body)
     tokens = {}
@@ -314,26 +363,43 @@ def scenarios(lam, data, evidence, get=http_get):
         ('java_foreign_order_hidden', owner, tokens['other'], 404),
         ('java_customer_admin_contract', '/api/v1/admin/work-orders', tokens['owner'], 403),
     ):
-        status, body = get(base + path, token)
+        status, body = get_java(base + path, token)
         matches = status == expected
         if expected == 200:
             matches = matches and json.loads(body).get('id') == path.rsplit('/', 1)[1]
         evidence.check(name, matches, status)
 
 
+class CleanupDeadline(BaseException):
+    """Escape SDK retry/error handlers when the independent cleanup budget expires."""
+
+
+def cleanup_expired(signum, frame):
+    raise CleanupDeadline()
+
+
 def close_window(lam, evidence, sleep=time.sleep):
     signal.alarm(0)
-    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGALRM):
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, signal.SIG_IGN)
-    for attempt in range(3):
-        try:
-            lam.put_function_concurrency(FunctionName=FUNCTION, ReservedConcurrentExecutions=0)
-            if lam.get_function_concurrency(FunctionName=FUNCTION).get('ReservedConcurrentExecutions') == 0:
-                evidence.check('final_concurrency_zero', True)
-                return
-        except Exception:
-            pass  # Never print SDK exceptions: they may include request data.
-        sleep(attempt + 1)
+    # A separate wall-clock bound also covers DNS/credential-provider stalls.
+    # Expiry never means success; the independent operator must recover.
+    signal.signal(signal.SIGALRM, cleanup_expired)
+    signal.alarm(CLEANUP_SECONDS)
+    try:
+        for attempt in range(3):
+            try:
+                lam.put_function_concurrency(FunctionName=FUNCTION, ReservedConcurrentExecutions=0)
+                if lam.get_function_concurrency(FunctionName=FUNCTION).get('ReservedConcurrentExecutions') == 0:
+                    evidence.check('final_concurrency_zero', True)
+                    return
+            except Exception:
+                pass  # Never print SDK exceptions: they may include request data.
+            sleep(attempt + 1)
+    except CleanupDeadline:
+        pass
+    finally:
+        signal.alarm(0)
     evidence.check('final_concurrency_zero', False)
     raise CheckFailed('cleanup_unconfirmed_use_independent_recovery')
 

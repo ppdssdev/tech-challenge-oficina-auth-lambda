@@ -443,3 +443,125 @@ def test_elapsed_consent_or_credentials_cannot_open_after_deadline(monkeypatch, 
     assert demo.main(['window', '--authorized', '--recovery-armed', '--input', 'unused']) == 1
     lam.put_function_concurrency.assert_not_called()
     assert 'window_deadline_before_open' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('origin', [
+    'http://java.test', 'http://10.0.0.1:8080', 'http://127.0.0.1:8080',
+    'http://localhost:18080', 'http://[::1]:18080', 'http://127.1:18080',
+    'http://127.0.0.1:18080/', 'http://127.0.0.1:18080@evil.test',
+    'http://127.0.0.1:18080?x=1', 'http://127.0.0.1:18080#fragment',
+])
+def test_private_adapter_rejects_alternate_origin_even_when_attested(data, origin):
+    data.update(java_transport='ssm-loopback', java_url=origin, ssm_tunnel_attested=True)
+    with pytest.raises(demo.CheckFailed):
+        demo.validate_inputs(data)
+
+
+@pytest.mark.parametrize('missing_gate', ['transport', 'attestation'])
+def test_private_adapter_requires_explicit_gates(data, missing_gate):
+    data.update(java_url=demo.JAVA_SSM_ORIGIN, java_transport='ssm-loopback',
+                ssm_tunnel_attested=True)
+    data.pop('java_transport' if missing_gate == 'transport' else 'ssm_tunnel_attested')
+    with pytest.raises(demo.CheckFailed):
+        demo.validate_inputs(data)
+
+
+def test_private_adapter_does_not_relax_jwks_https(data):
+    data.update(java_url=demo.JAVA_SSM_ORIGIN, java_transport='ssm-loopback',
+                ssm_tunnel_attested=True, jwks_url='http://127.0.0.1:18080/keys')
+    with pytest.raises(demo.CheckFailed, match='trusted_https_url'):
+        demo.validate_inputs(data)
+
+
+@pytest.mark.parametrize('path', [
+    '/api/v1/admin/work-orders?cpf=x', '/api/v1/admin/work-orders#x',
+    '/api/v1/admin/work-orders/../customers', '/actuator/env',
+    '/api/v1/customer/work-orders/invalid', '//evil.test',
+])
+def test_private_adapter_only_allows_exact_smoke_gets(data, monkeypatch, path):
+    data.update(java_url=demo.JAVA_SSM_ORIGIN, java_transport='ssm-loopback',
+                ssm_tunnel_attested=True)
+    factory = Mock()
+    monkeypatch.setattr(demo.http.client, 'HTTPConnection', factory)
+    with pytest.raises(demo.CheckFailed):
+        demo.java_get(data, demo.JAVA_SSM_ORIGIN + path, 'never-sent')
+    factory.assert_not_called()
+
+
+@pytest.mark.parametrize('status', [200, 302, 401, 403, 404])
+def test_private_adapter_fixed_loopback_does_not_follow_redirects(data, monkeypatch, status):
+    data.update(java_url=demo.JAVA_SSM_ORIGIN, java_transport='ssm-loopback',
+                ssm_tunnel_attested=True)
+    demo.validate_inputs(data)
+    response = Mock(status=status, read=Mock(return_value=b'{}'))
+    conn = Mock(getresponse=Mock(return_value=response))
+    factory = Mock(return_value=conn)
+    monkeypatch.setattr(demo.http.client, 'HTTPConnection', factory)
+    monkeypatch.setenv('HTTP_PROXY', 'http://untrusted.test:8080')
+    path = '/api/v1/customer/work-orders/' + data['owner']['order_id']
+    assert demo.java_get(data, demo.JAVA_SSM_ORIGIN + path, 'secret') == (status, b'{}')
+    factory.assert_called_once_with('127.0.0.1', 18080, timeout=5)
+    conn.request.assert_called_once_with('GET', path, headers={
+        'Accept': 'application/json', 'Authorization': 'Bearer secret'})
+    conn.close.assert_called_once()
+
+
+def test_https_transport_keeps_certificate_hostname_validation(monkeypatch):
+    response = Mock(status=200, read=Mock(return_value=b'{}'))
+    factory = Mock(return_value=Mock(getresponse=Mock(return_value=response)))
+    monkeypatch.setattr(demo.http.client, 'HTTPSConnection', factory)
+    demo.http_get('https://jwks.test/keys')
+    context = factory.call_args.kwargs['context']
+    assert context.check_hostname is True
+    assert context.verify_mode == demo.ssl.CERT_REQUIRED
+
+
+def test_rds_tunnel_preserves_certificate_hostname_and_reader(data):
+    data.update(db_transport='ssm-loopback', ssm_tunnel_attested=True)
+    conn = Mock()
+    conn.__enter__ = Mock(return_value=conn)
+    conn.__exit__ = Mock(return_value=False)
+    cursor = Mock()
+    cursor.fetchone.side_effect = [('on',), (True,), (True,)]
+    cursor.fetchall.side_effect = [[(data[n]['customer_id'], active)] for n, active in
+                                  [('owner', True), ('other', True), ('inactive', False)]] + [[]]
+    conn.execute.return_value = cursor
+    connect = Mock(return_value=conn)
+    demo.audit_database(data, 'never-print-password', demo.Evidence(), connect=connect)
+    assert connect.call_args.kwargs['host'] == data['db_host']
+    assert connect.call_args.kwargs['hostaddr'] == '127.0.0.1'
+    assert connect.call_args.kwargs['port'] == 15432
+    assert connect.call_args.kwargs['sslmode'] == 'verify-full'
+    assert connect.call_args.kwargs['sslrootcert'] == data['db_ca_file']
+    assert connect.call_args.kwargs['user'] == 'oficina_lambda'
+    conn.rollback.assert_called_once()
+
+
+def test_unknown_transport_and_unattested_db_tunnel_rejected(data):
+    data['java_transport'] = 'http'
+    with pytest.raises(demo.CheckFailed, match='java_transport'):
+        demo.validate_inputs(data)
+    del data['java_transport']
+    data['db_transport'] = 'ssm-loopback'
+    with pytest.raises(demo.CheckFailed, match='ssm_tunnel_attestation'):
+        demo.validate_inputs(data)
+
+
+def test_cleanup_has_independent_deadline_and_never_claims_zero_on_expiry(monkeypatch, capsys):
+    alarm = Mock()
+    monkeypatch.setattr(demo.signal, 'alarm', alarm)
+    lam = Mock()
+    lam.put_function_concurrency.side_effect = demo.CleanupDeadline()
+    evidence = demo.Evidence()
+    with pytest.raises(demo.CheckFailed, match='cleanup_unconfirmed_use_independent_recovery'):
+        demo.close_window(lam, evidence, sleep=Mock())
+    assert evidence.failed
+    assert [call.args for call in alarm.call_args_list] == [(0,), (120,), (0,)]
+    assert signal.getsignal(signal.SIGALRM) is demo.cleanup_expired
+    lam.get_function_concurrency.assert_not_called()
+    assert 'PASS' not in capsys.readouterr().out
+
+
+def test_cleanup_alarm_escapes_sdk_exception_handlers():
+    with pytest.raises(demo.CleanupDeadline):
+        demo.cleanup_expired(signal.SIGALRM, None)

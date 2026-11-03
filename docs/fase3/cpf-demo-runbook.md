@@ -49,6 +49,13 @@ Fontes Java:
 [testes JWKS](https://github.com/ppdssdev/tech-challenge-oficina/blob/469984555ea3b1d0d40580ada20144e2d01550b1/src/test/java/br/com/fiap/techchallenge/oficina/integration/CustomerJwtIntegrationTest.java),
 [filtro ADMIN](https://github.com/ppdssdev/tech-challenge-oficina/blob/469984555ea3b1d0d40580ada20144e2d01550b1/src/main/java/br/com/fiap/techchallenge/oficina/adapters/out/security/JwtAuthenticationFilter.java).
 
+## Revisão do transporte privado
+
+O listener Java versionado é HTTP ClusterIP:8080; o modo HTTPS original não é
+executável sobre ele só por existir SSM. A [correção de transporte privado](private-transport-review.md)
+descreve o adapter opt-in restrito a loopback, comandos SSM e seus limites, sem
+relaxar JWKS/TLS RDS/RS256 ou o aceite ADMIN 403. Sem topologia atestada, bloquear.
+
 ## Pré-requisitos do operador — sem provisionamento automático
 
 - Autorização registrada para conta `797781632267`, região `us-east-2`, perfil
@@ -71,7 +78,8 @@ Fontes Java:
   GetPolicy, InvokeFunction e PutFunctionConcurrency na função; API Gateway GET
   para API/routes/integration/stage/deployment. **Sem GetSecretValue** para o smoke.
   Permissões insuficientes são bloqueio, não motivo para expandir IAM automaticamente.
-- Host com caminho aprovado para RDS privado e HTTPS Java/JWKS. Não abrir RDS,
+- Host com caminho aprovado para RDS privado e HTTPS Java/JWKS, ou adapter
+  Java SSM-loopback explicitamente atestado conforme a revisão vinculada. Não abrir RDS,
   ingress, execute-api nem criar túnel implicitamente. A CA do RDS deve ser a
   confiável já aprovada; conexão usa hostname RDS, TLS `verify-full` e reader
   `oficina_lambda`. A senha é digitada em prompt oculto, nunca em argv/env/JSON.
@@ -196,7 +204,9 @@ Todos os comandos desta seção estão **não executados nesta entrega**.
    automático de Invoke. Cada chamada SDK tem connect timeout 2 s/read timeout 15 s;
    HTTP 5 s e SQL connect/statement timeout 3 s. Falhas de casos HTTP são acumuladas
    para mostrar a matriz; falhas de dependência interrompem e executam cleanup.
-   Sinais são ignorados apenas durante cleanup para não interromper o fechamento.
+   SIGINT/SIGTERM/SIGHUP são ignorados apenas durante cleanup. SIGALRM impõe
+   orçamento separado de 120 s ao fechamento; expiração é FAIL e exige a via
+   independente. Os 180 s do principal não garantem Get=0 nesse exato instante.
 
 5. Só encerrar a demonstração após `final_concurrency_zero=PASS` **e** confirmação
    independente de zero pelo watchdog/operador. Exit 0 exige todos os casos passarem.

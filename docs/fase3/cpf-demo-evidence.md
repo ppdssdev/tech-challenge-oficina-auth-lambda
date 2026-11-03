@@ -4,6 +4,13 @@
 pelo operador; nenhum estado real foi consultado nesta entrega. Fontes e SHAs
 estão no [runbook](cpf-demo-runbook.md). Repositórios irmãos somente lidos.
 
+## Complemento de revisão
+
+Consultar a [revisão de transporte privado](private-transport-review.md): o
+adapter loopback é opt-in e não prova HTTPS Java fim a fim. Os resultados originais
+abaixo são históricos; a correção adiciona testes sem rede e prazo de cleanup.
+Nenhuma execução staging ou fixture é inferida desses testes.
+
 ## Matriz para preencher após janela aprovada
 
 | Caso | Evidência aceita | Situação nesta entrega |
