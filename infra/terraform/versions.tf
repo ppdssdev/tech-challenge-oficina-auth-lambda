@@ -3,7 +3,6 @@ terraform {
   required_providers {
     aws = { source = "hashicorp/aws", version = "= 6.38.0" }
   }
-  # Independent root/state. Backend migration requires separate approval.
 }
 provider "aws" {
   region              = "us-east-2"
