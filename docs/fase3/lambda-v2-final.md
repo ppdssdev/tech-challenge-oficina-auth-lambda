@@ -1,3 +1,6 @@
+> **Registro histórico:** resultados e pendências abaixo pertencem à etapa original.
+> Estado vigente em 2026-11-03: [consolidação auditada](../fase3-evidence.md).
+
 # Fechamento Lambda V2 — 2026-11-02
 
 Código e validação externa preparados; **publicação/deploy ainda sem aceite integral**.

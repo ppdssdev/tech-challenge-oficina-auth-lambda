@@ -1,3 +1,6 @@
+> **Registro histórico:** resultados e pendências abaixo pertencem à etapa original.
+> Estado vigente em 2026-11-03: [consolidação auditada](fase3-evidence.md).
+
 # Prompt 13 — segurança e integração antes do deploy
 
 > Evidência histórica, anterior à reconciliação V11. Referências a V8/V1, hashes,
