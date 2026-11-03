@@ -34,6 +34,11 @@ def inventory(connect, host, ca, reader_password, auditor, auditor_password, evi
         print(json.dumps(dict(zip(('identities_v2', 'enabled_v2', 'disabled_v2'), row))), flush=True)
         conn.rollback()
     evidence.check('reader_readonly_tls_privileges', True)
+    if data is None:
+        print(json.dumps({'scope': 'reader_counts_only', 'ownership': 'NOT_CHECKED',
+                          'synthetic_provenance': 'NOT_CHECKED',
+                          'selected_fixture_allowlist': 'NOT_CHECKED'}), flush=True)
+        return
     if data is not None:
         demo.audit_database(data, reader_password, evidence, connect=connect)
     # Uses a separately supplied, already authorized auditor. Never obtains Secrets or grants.
@@ -97,9 +102,11 @@ def main(argv=None):
             for name in ('owner', 'other', 'inactive'):
                 evidence.check('allowlist_' + name, data[name]['customer_id'] in allowed)
         reader_password = getpass.getpass('Senha do reader oficina_lambda (sem eco): ')
-        auditor = input('Papel auditor já autorizado (não usar administrador automaticamente): ').strip()
-        demo.require(re.fullmatch(r'[a-z_][a-z0-9_]{0,62}', auditor), 'auditor_role_shape')
-        auditor_password = getpass.getpass('Senha do auditor (sem eco): ')
+        auditor = auditor_password = None
+        if data is not None:
+            auditor = input('Papel auditor já autorizado (não usar administrador automaticamente): ').strip()
+            demo.require(re.fullmatch(r'[a-z_][a-z0-9_]{0,62}', auditor), 'auditor_role_shape')
+            auditor_password = getpass.getpass('Senha do auditor (sem eco): ')
         import psycopg
         inventory(psycopg.connect, args.host, args.ca, reader_password, auditor, auditor_password,
                   evidence, data)

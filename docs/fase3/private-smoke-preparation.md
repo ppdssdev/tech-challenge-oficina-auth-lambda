@@ -56,13 +56,15 @@ bash scripts/private_inventory.sh
 
 O script confere conta, Lambda zero, RDS privado e SSM; cria exclusivamente túnel
 local 15432 e o encerra ao sair. Solicita caminho da CA RDS aprovada, opcionalmente
-JSON privado, senha reader e papel/senha auditor já autorizado, sem eco de senhas.
+JSON privado e senha reader; somente com JSON solicita papel/senha auditor já
+autorizado, sem eco de senhas.
 Não busca Secrets, não faz grants nem usa administrador automaticamente. O listener
 precisa pertencer à sessão criada; falha se a porta estiver ocupada. Atestar somente
 em host controlado. TLS mantém host=DNS RDS, hostaddr=127.0.0.1 e verify-full.
 
-Sem JSON, retorna contagens sanitizadas e FAIL de seleção incompleta: isso é
-inventário parcial, não prova fixtures. Para verificar seleção, fornecer entrada
+Sem JSON, usa somente oficina_lambda, retorna contagens sanitizadas e marca
+ownership/proveniência/allowlist das fixtures como NOT_CHECKED. Exit zero nesse
+modo indica sucesso do inventário parcial, não prova fixtures. Para verificar seleção, fornecer entrada
 0600 do runbook com `provenance_ref` apontando ao registro privado aprovado,
 `db_transport=ssm-loopback` e atestação. Não publicar esse arquivo ou seu hash.
 O auditor verifica duas associações OS/cliente/veículo parametrizadas; o reader
@@ -138,3 +140,18 @@ incluindo emissor Python real, com `-Dlambda.repo=/tmp/oficina-security-review/l
 e `-Dlambda.python=/tmp/lambda-v2-validation.bbK2ghVL/venv/bin/python`.
 O teste `realPythonSignerAuthenticatesAsCustomer` usa o signer Lambda real com chave
 local efêmera; continua sem emissão staging. Esta execução supera o skip inicial.
+
+## Correção do modo somente contagens
+
+O modo anterior solicitava auditor mesmo sem JSON, antes de qualquer SELECT.
+A captura do operador terminou em interrupted_or_deadline nesse prompt; não
+comprova autenticação PostgreSQL ou inventário. Agora o modo sem JSON consulta
+apenas a view V2 e catálogos de privilégios/TLS com oficina_lambda. Não solicita
+auditor nem acessa tabelas públicas de negócio; nenhuma permissão foi ampliada.
+
+Bootstrap versionado define oficina_migrator, oficina_api e oficina_lambda;
+oficina_auth_reader é NOLOGIN. Não há auditor dedicado nesses scripts.
+Referência da credencial reader consultada somente na configuração Lambda:
+Secret `oficina/staging/auth-runtime-oLDGuG`, us-east-2, campo `password`.
+Nenhum SecretString foi lido. Obter pelo responsável autorizado/canal seguro;
+não exportar o Secret inteiro, que também contém material privado de assinatura.
